@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,9 +23,14 @@ def _path(value: str) -> Path:
     return Path(value).expanduser()
 
 
+def _default_catalog_db() -> Path:
+    configured = os.getenv("CURRICULUM_DB")
+    return _path(configured) if configured else Path("data/catalog.sqlite3")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="kcurriculum",
+        prog="curriculum",
         description="Export Kolibri curriculum metadata to JSON and SQLite.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -68,10 +74,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser.add_argument("--max-depth", type=int)
 
     query_parser = subparsers.add_parser("query", help="Query the generated SQLite catalog.")
-    query_parser.add_argument("--db", type=_path, default=Path("data/catalog.sqlite3"))
+    query_parser.add_argument("--db", type=_path, default=_default_catalog_db())
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
-    channels_parser = query_subparsers.add_parser("channels")
+    query_subparsers.add_parser("channels")
 
     search_parser = query_subparsers.add_parser("search")
     search_parser.add_argument("query")

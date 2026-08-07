@@ -20,9 +20,10 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
 
 [project.scripts]
+curriculum = "kolibri_curriculum.cli:main"
 kcurriculum = "kolibri_curriculum.cli:main"
 
 [tool.setuptools]
