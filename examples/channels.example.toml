@@ -1,0 +1,14 @@
+# Channel IDs are examples/placeholders. Obtain current IDs through Kolibri's UI.
+
+[data]
+directory = "./data"
+
+[[channels]]
+name = "Khan Academy English"
+language = "en"
+channel_id = "REPLACE_WITH_CURRENT_CHANNEL_ID"
+
+[[channels]]
+name = "Khan Academy Vietnamese"
+language = "vi"
+channel_id = "REPLACE_WITH_CURRENT_CHANNEL_ID"
