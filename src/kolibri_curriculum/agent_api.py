@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .discovery import ChannelDiscovery, language_display_name
 from .repository import CatalogRepository
+from .resolver import ResolvedChannel, SourceResolver
+from .source_registry import SourceDefinition
 
 _MAX_ID_LENGTH = 256
 _MAX_QUERY_LENGTH = 512
@@ -59,10 +62,19 @@ class CatalogQueryService:
     The service intentionally does not expose arbitrary SQL. An agent adapter can
     serialize these methods as function tools without granting write access or
     filesystem access to the model.
+
+    Source-aware methods are available when a ``ChannelDiscovery`` backend is
+    supplied at construction time.  Without one, source/language resolution will
+    return empty results gracefully.
     """
 
-    def __init__(self, database_path: Path | str):
+    def __init__(
+        self,
+        database_path: Path | str,
+        discovery: ChannelDiscovery | None = None,
+    ):
         self.repository = CatalogRepository(database_path, initialize=False)
+        self._resolver = SourceResolver(discovery=discovery)
 
     def channels(self) -> list[dict[str, Any]]:
         return [_sanitize_record(channel) for channel in self.repository.list_channels()]
@@ -144,6 +156,94 @@ class CatalogQueryService:
             _sanitize_record(change)
             for change in self.repository.list_changes(
                 channel_id=normalized_channel_id,
+                limit=bounded_limit,
+            )
+        ]
+
+    # ------------------------------------------------------------------
+    # Source-aware agent methods
+    # ------------------------------------------------------------------
+
+    def sources(
+        self,
+        *,
+        language: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return a list of known educational sources.
+
+        Each entry contains ``provider_id``, ``name``, ``languages``, and
+        ``channel_count``.  No channel IDs are included.
+        """
+        lang = _validate_identifier(language, field="language") if language else None
+        return [s.to_dict() for s in self._resolver.list_sources(language=lang)]
+
+    def source(self, name: str) -> dict[str, Any]:
+        """Resolve a source name/alias and return its definition.
+
+        Returns a dict with ``provider_id``, ``display_name``, and ``aliases``.
+        Raises ``ValueError`` if not found or ambiguous.
+        """
+        name = _validate_identifier(name, field="name")
+        source_def = self._resolver.resolve_source(name)
+        return {
+            "provider_id": source_def.provider_id,
+            "display_name": source_def.display_name,
+            "aliases": list(source_def.aliases),
+        }
+
+    def source_languages(self, name: str) -> list[dict[str, Any]]:
+        """Return the languages available for a source.
+
+        Each entry contains ``code`` and ``name``.
+        """
+        name = _validate_identifier(name, field="name")
+        codes = self._resolver.available_languages(name)
+        return [{"code": code, "name": language_display_name(code)} for code in codes]
+
+    def resolve_source(
+        self,
+        name: str,
+        *,
+        language: str | None = None,
+        variant: str | None = None,
+    ) -> dict[str, Any]:
+        """Resolve source + language + optional variant to a ``ResolvedChannel`` dict.
+
+        The returned dict includes ``channel_id`` for internal use, along with
+        ``provider_id``, ``provider_name``, ``language_code``, ``language_name``,
+        and ``variant``.
+        """
+        name = _validate_identifier(name, field="name")
+        resolved = self._resolver.resolve_channel(
+            name,
+            language=language,
+            variant=variant,
+        )
+        return resolved.to_dict()
+
+    def search_source(
+        self,
+        query: str,
+        source: str,
+        *,
+        language: str | None = None,
+        variant: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search within a specific source (resolved by name + language).
+
+        Every returned node includes ``channel_id`` and ``node_id`` for
+        authoritative references.
+        """
+        query = _validate_identifier(query, field="query")
+        source = _validate_identifier(source, field="source")
+        bounded_limit = _bounded_limit(limit)
+        resolved = self._resolver.resolve_channel(source, language=language, variant=variant)
+        return [
+            _sanitize_record(row)
+            for row in self.repository.search(
+                query,
+                channel_id=resolved.channel_id,
                 limit=bounded_limit,
             )
         ]

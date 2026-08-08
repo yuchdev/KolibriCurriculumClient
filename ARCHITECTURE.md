@@ -18,6 +18,19 @@ The system must:
 ## 2. System boundary
 
 ```text
+User source reference ("Khan Academy", language="en")
+          |
+          v
+    SourceResolver
+          |
+          +-----> Provider Registry (source_registry.py)
+          |
+          +-----> Channel Discovery Cache (discovery.py)
+          |
+          v
+    Resolved Channel (channel_id)
+          |
+          v
 Kolibri Studio / channel source
           |
           | kolibri manage importchannel network <channel-id>
@@ -38,13 +51,87 @@ snapshots/current       catalog.sqlite3
                               |
                               v
                     CatalogQueryService
-                    (future agent tools)
+                    (agent tools + source-aware API)
 ```
 
 The project never invokes `importcontent`. It does not read Kolibri's
 `content/storage` directory.
 
+Channel IDs remain authoritative internally. Source names and languages are a UX
+layer that resolves to channel IDs before any Kolibri operation.
+
 ## 3. Modules
+
+### `source_registry.py`
+
+Defines `SourceDefinition` — a known educational content provider with a stable
+`provider_id`, a human-readable `display_name`, and a tuple of `aliases`.
+
+The registry lists providers such as Khan Academy, CK-12, OpenStax, and PhET.
+It does **not** store volatile Kolibri channel IDs.
+
+Resolution priority:
+
+1. Exact display name (case-insensitive).
+2. Exact provider ID.
+3. Known alias.
+4. Unique partial substring match of display name.
+5. Ambiguity error (multiple matches) or not-found error (zero matches).
+
+### `discovery.py`
+
+Defines `DiscoveredChannel` — a channel found through a discovery source — and the
+`ChannelDiscovery` protocol that any backend must satisfy.
+
+Concrete implementations:
+
+- `NullDiscovery`: returns a fixed list; used in tests and offline mode.
+- `FileCacheDiscovery`: reads a local JSON cache (`~/.cache/curriculum/sources.json`).
+  May delegate to a live backend when the cache is absent or stale.
+
+Cache behavior:
+
+| State              | Network     | Outcome                              |
+|--------------------|-------------|--------------------------------------|
+| Fresh (< 7 days)   | any         | Use cache                            |
+| Stale (≥ 7 days)   | available   | Refresh and save                     |
+| Stale (≥ 7 days)   | unavailable | Use stale cache (emits warning)      |
+| Missing            | unavailable | Raise `RuntimeError` with guidance   |
+
+Language helpers: `resolve_language_code` converts full names (e.g. "English") to
+codes (e.g. "en"), and `language_display_name` does the reverse.
+
+### `resolver.py`
+
+Implements `SourceResolver` — the service that maps a human source name + language
+(+ optional variant) to a `ResolvedChannel` containing a stable `channel_id`.
+
+Resolution flow:
+
+```text
+"Khan Academy" + language="en" + variant="US Curriculum"
+        |
+        v
+ resolve_source() -> SourceDefinition
+        |
+        v
+ filter DiscoveredChannel list by provider_id + language
+        |
+        v
+ variant filter (if multiple channels for that language)
+        |
+        v
+ ResolvedChannel(channel_id="...", ...)
+```
+
+Error classes:
+
+- `UnknownSourceError` — source not found (includes did-you-mean if applicable).
+- `AmbiguousSourceError` — partial match hits multiple sources.
+- `LanguageUnavailableError` — source has no discovered channel for the language.
+- `MissingLanguageError` — source has multiple languages but none was specified.
+- `AmbiguousVariantError` — multiple channels match; `--variant` is required.
+- `UnknownVariantError` — specified variant not found.
 
 ### `kolibri.py`
 
@@ -158,9 +245,17 @@ Provides an allowlisted read-only facade:
 - get node;
 - list children;
 - read bounded subtree;
-- inspect recent changes.
+- inspect recent changes;
+- list educational sources (`sources()`);
+- resolve a source by name (`source()`);
+- list available languages for a source (`source_languages()`);
+- resolve source + language + variant to a channel (`resolve_source()`);
+- search within a source by name (`search_source()`).
 
 It deliberately does not expose arbitrary SQL.
+
+When a `ChannelDiscovery` backend is supplied at construction time, the source-aware
+methods are enabled. Without one, they return empty results gracefully.
 
 ### `sync.py`
 

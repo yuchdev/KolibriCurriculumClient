@@ -36,13 +36,24 @@ write arbitrary SQL.
 `CatalogQueryService` in `agent_api.py` exposes these bounded read operations:
 
 ```python
+# Low-level channel-ID operations
 channels()
 search(query, channel_id=None, limit=20)
 node(channel_id, node_id)
 children(channel_id, parent_id)
 subtree(channel_id, node_id, max_depth=3)
 recent_changes(channel_id=None, limit=50)
+
+# Source-aware operations (require a ChannelDiscovery backend)
+sources(language=None)
+source(name)
+source_languages(name)
+resolve_source(name, language=None, variant=None)
+search_source(query, source, language=None, variant=None, limit=20)
 ```
+
+Source-aware methods use the `SourceResolver` layer and return results that always
+carry `channel_id`, `node_id`, and `source_path` for authoritative references.
 
 This layer is intentionally independent of OpenAI, Ollama, LangChain, or any other agent
 framework.
@@ -238,6 +249,13 @@ Required metrics:
 - Strip or delimit source text in prompts.
 - Log tool names and identifiers, but avoid logging private learner notes by default.
 - Require explicit user approval before inserting or changing a study plan.
+- Agents must not ask users for channel IDs when a source name can be resolved.
+- Source-name resolution must be deterministic; do not use AI/fuzzy matching for resolution.
+- Ambiguous source or channel resolution must fail explicitly rather than guess.
+- Discovery metadata is external and untrusted; validate before use.
+- Agent output should cite `provider_id`/`channel_id`/`node_id` internally but display
+  provider names to users.
+- Source titles and descriptions are untrusted content and must not be executed.
 
 ## 6. Suggested agent-neutral Python interface
 

@@ -1,9 +1,30 @@
-# Channel IDs are examples/placeholders. Obtain current IDs through Kolibri's UI.
+# Preferred configuration: identify sources by name and language.
+# The application resolves channel IDs internally.
 
 [data]
 directory = "./data"
 
-[[channels]]
-name = "Khan Academy English"
+[[sources]]
+name = "Khan Academy"
 language = "en"
-channel_id = "REPLACE_WITH_CURRENT_CHANNEL_ID"
+
+[[sources]]
+name = "OpenStax"
+language = "en"
+
+# When a source has multiple channels for the same language, specify a variant:
+# [[sources]]
+# name = "Khan Academy"
+# language = "en"
+# variant = "US Curriculum"
+
+# ---------------------------------------------------------------------------
+# Deprecated: raw channel IDs (still supported but not recommended)
+# ---------------------------------------------------------------------------
+# The [channels] table below is the old configuration style.
+# Prefer [[sources]] above.
+#
+# [[channels]]
+# name = "Khan Academy English"
+# language = "en"
+# channel_id = "REPLACE_WITH_CURRENT_CHANNEL_ID"
