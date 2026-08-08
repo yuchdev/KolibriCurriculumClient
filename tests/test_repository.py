@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import pytest
+
 from kolibri_curriculum.reader import read_catalog
 from kolibri_curriculum.repository import CatalogRepository
 from kolibri_curriculum.tree import enrich_tree
@@ -55,3 +57,22 @@ def test_agent_facade_is_read_only(sample_channel_db, tmp_path):
         row["node_id"] == "video1"
         for row in service.search("graphing", channel_id="channel-1")
     )
+    assert "source_database" not in service.channels()[0]
+
+
+def test_agent_facade_validates_bounds(sample_channel_db, tmp_path):
+    from kolibri_curriculum.agent_api import CatalogQueryService
+
+    catalog = read_catalog(sample_channel_db)
+    database = tmp_path / "catalog.sqlite3"
+    CatalogRepository(database).sync_catalog(catalog)
+    service = CatalogQueryService(database)
+
+    assert service.search("graphing", limit=9999)
+    assert service.subtree("channel-1", "unit6", max_depth=9999)
+
+    with pytest.raises(ValueError):
+        service.search("graphing", limit=0)
+
+    with pytest.raises(ValueError):
+        service.node("", "video1")
